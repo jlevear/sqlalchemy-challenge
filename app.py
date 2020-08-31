@@ -51,7 +51,7 @@ def precipitation():
     session = Session(engine)
 
     # Query the date and prcp columns from the Measurement table
-    results = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date >= 8/23/2016).all()
+    results = session.query(Measurement.date, Measurement.prcp).filter(func.date(Measurement.date >= '8/23/2016')).all()
 
     session.close()
 
