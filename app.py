@@ -1,6 +1,10 @@
 import numpy as np
 
+import numpy as np
+import pandas as pd
 import sqlalchemy
+import datetime as dt
+from datetime import timedelta
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
@@ -51,19 +55,79 @@ def precipitation():
     session = Session(engine)
 
     # Query the date and prcp columns from the Measurement table
-    results = session.query(Measurement.date, Measurement.prcp).filter(func.date(Measurement.date >= '8/23/2016')).all()
+    dates = session.query(Measurement.date).all()
+    
+    # Create loop to format strings as parsed dates
+    parsed_dates = []
+
+    for date in dates:
+        temp = str(date)
+        temp = temp.replace('(', '')
+        temp = temp.replace(')', '')
+        temp = temp.replace(',', '')
+        temp = temp.replace("'", '')
+        parsed_date = dt.datetime.strptime(temp, '%Y-%m-%d')
+        parsed_dates.append(parsed_date)
+
+    # Calculate date 1 year ago from the last data point in the database
+    max_date = max(parsed_dates)
+    min_date = max_date - timedelta(days=365)
+
+    # Create loop to filter dates to only 1 year ago
+    filtered_dates = []
+
+    for parsed_date in parsed_dates:
+        if (parsed_date <= max_date) and (parsed_date >= min_date):
+            filtered_dates.append(parsed_date)
+
+    # Create query to retrieve all precipitation scores
+    prcps = session.query(Measurement.prcp).all()
+
+    # Create loop to format strings as parsed prcps
+    parsed_prcps = []
+
+    for prcp in prcps:
+        temp = str(prcp)
+        temp = temp.replace('(', '')
+        temp = temp.replace(')', '')
+        temp = temp.replace(',', '')
+        temp = temp.replace('None', '')
+        parsed_prcps.append(temp)
+
+    # Create dataframe from parsed lists
+    measurement_df = pd.DataFrame({'Date': parsed_dates, 'Prcp': parsed_prcps})
+    measurement_df
+
+    # Filter dataframe to dates to only 1 year ago
+    date_filter = measurement_df['Date'] >= min_date
+    filtered_dates_df = measurement_df[date_filter]
+
+    # Filter dataframe to eliminate blank prcp entries
+    prcp_filter = filtered_dates_df['Prcp'] != ''
+    filtered_prcp_df = filtered_dates_df[prcp_filter]
+
+    # Separate columns before creating a new dataframe
+    final_dates = filtered_prcp_df['Date']
+    final_dates
+
+    # Convert prcp to float (user: SilentGhost)
+    # (url: https://stackoverflow.com/questions/1614236/in-python-how-do-i-convert-all-of-the-items-in-a-list-to-floats)
+    final_prcps = [float(i) for i in filtered_prcp_df['Prcp']]
+    final_prcps
+
+    # Create dataframe with filters applied
+    final_df = pd.DataFrame({'Date': final_dates, 'Precipitation': final_prcps})
+    final_df
+
+    dates_json = final_df['Date'].to_json()
+    prcps_json = final_df['Precipitation'].to_json()
 
     session.close()
 
-    # Create a dictionary from the row data and append to a list of all_results
-    all_results = []
-    for item in results:
-        item_dict = {}
-        item_dict["date"] = item[0]
-        item_dict["prcp"] = item[1]
-        all_results.append(item_dict)
+    # Create a dictionary from the results
+    item_dict = {'date':dates_json, 'prcps':prcps_json}
 
-    return jsonify(all_results)
+    return jsonify(item_dict)
 
 @app.route("/api/v1.0/stations")
 def stations():
@@ -85,13 +149,22 @@ def tobs():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
-    # Query the station, date and temperature from the station with most temperature readings
-    results = session.query(Measurement.station, Measurement.date, Measurement.tobs).filter(Measurement.station == "USC00511918").all()
+    # Join the two tables on station
+    sel = [Station.name, Measurement.station, Measurement.date, Measurement.tobs]
+    same_station = session.query(*sel).filter(Measurement.station == Station.station).all()
+
+    # Create a dataframe that includes station name
+    station_df = pd.DataFrame(same_station, columns=['Name', 'Station', 'Date', 'Tobs']).reset_index()
+
+    # Filter dataframe for station USC00519281
+    filter_station_df = station_df['Station'] == 'USC00519281'
+    active_station_df = station_df[filter_station_df]
+    active_station_df
 
     session.close()
 
     # Convert list of tuples into normal list
-    all_results = list(np.ravel(results))
+    all_results = list(np.ravel(active_station_df))
 
     return jsonify(all_results)
 
