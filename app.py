@@ -57,7 +57,14 @@ def precipitation():
     
     session.close()
 
-    return jsonify(results)
+    all_results = []
+    for item in results:
+        item_dict = {}
+        item_dict[item[0]] = item[1]
+        all_results.append(item_dict)
+
+    return jsonify(all_results)
+
 
 @app.route("/api/v1.0/stations")
 def stations():
